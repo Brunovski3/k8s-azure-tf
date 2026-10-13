@@ -5,9 +5,15 @@ variable "location" {
 }
 
 variable "resource_group_name" {
-  description = "Nome do resource group"
+  description = "Nome base do resource group (ganha sufixo único de 4 hex chars)"
   type        = string
   default     = "rg-k8s-course"
+}
+
+variable "cluster_name" {
+  description = "Nome do cluster. Usado como prefixo de todos os nomes de recursos de rede e VMs"
+  type        = string
+  default     = "k8s"
 }
 
 variable "vm_count" {
