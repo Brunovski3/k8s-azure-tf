@@ -24,6 +24,16 @@ resource "random_id" "suffix" {
   }
 }
 
+# Um nó por chave: control-plane ("master") + N-1 workers.
+# Elas são identificadas por nome e não por índice — adicionar ou
+# remover um worker não reescreve os nós existentes, como acontecia com count.
+locals {
+  nodes = merge(
+    { "master" = var.vm_size },
+    { for i in range(var.vm_count - 1) : "worker-${i + 1}" => var.worker_vm_size }
+  )
+}
+
 # Nomes derivados do cluster_name + sufixo único de 4 hex chars.
 # Permite subir o blueprint duas vezes na mesma conta sem conflito de nomes.
 resource "azurerm_resource_group" "rg" {
@@ -101,8 +111,8 @@ resource "azurerm_network_security_group" "nsg" {
 }
 
 resource "azurerm_public_ip" "pip" {
-  count               = var.vm_count
-  name                = "pip-${var.cluster_name}-${count.index}"
+  for_each            = local.nodes
+  name                = "pip-${var.cluster_name}-${each.key}"
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
   allocation_method   = "Static"
@@ -110,8 +120,8 @@ resource "azurerm_public_ip" "pip" {
 }
 
 resource "azurerm_network_interface" "nic" {
-  count               = var.vm_count
-  name                = "nic-${var.cluster_name}-${count.index}"
+  for_each            = local.nodes
+  name                = "nic-${var.cluster_name}-${each.key}"
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
 
@@ -119,26 +129,26 @@ resource "azurerm_network_interface" "nic" {
     name                          = "internal"
     subnet_id                     = azurerm_subnet.subnet.id
     private_ip_address_allocation = "Dynamic"
-    public_ip_address_id          = azurerm_public_ip.pip[count.index].id
+    public_ip_address_id          = azurerm_public_ip.pip[each.key].id
   }
 }
 
 resource "azurerm_network_interface_security_group_association" "nsg_assoc" {
-  count                     = var.vm_count
-  network_interface_id      = azurerm_network_interface.nic[count.index].id
+  for_each                  = local.nodes
+  network_interface_id      = azurerm_network_interface.nic[each.key].id
   network_security_group_id = azurerm_network_security_group.nsg.id
 }
 
 resource "azurerm_linux_virtual_machine" "vm" {
-  count                           = var.vm_count
-  name                            = count.index == 0 ? "${var.cluster_name}-master" : "${var.cluster_name}-worker-${count.index}"
-  computer_name                   = count.index == 0 ? "${var.cluster_name}-master" : "${var.cluster_name}-worker-${count.index}"
+  for_each                        = local.nodes
+  name                            = "${var.cluster_name}-${each.key}"
+  computer_name                   = "${var.cluster_name}-${each.key}"
   location                        = azurerm_resource_group.rg.location
   resource_group_name             = azurerm_resource_group.rg.name
-  size                            = count.index == 0 ? var.vm_size : var.worker_vm_size
+  size                            = each.value
   admin_username                  = var.admin_username
   disable_password_authentication = true
-  network_interface_ids           = [azurerm_network_interface.nic[count.index].id]
+  network_interface_ids           = [azurerm_network_interface.nic[each.key].id]
 
   admin_ssh_key {
     username   = var.admin_username
@@ -162,8 +172,8 @@ resource "azurerm_linux_virtual_machine" "vm" {
 }
 
 resource "azurerm_dev_test_global_vm_shutdown_schedule" "shutdown" {
-  count              = var.vm_count
-  virtual_machine_id = azurerm_linux_virtual_machine.vm[count.index].id
+  for_each            = local.nodes
+  virtual_machine_id = azurerm_linux_virtual_machine.vm[each.key].id
   location           = azurerm_resource_group.rg.location
   enabled            = true
 
