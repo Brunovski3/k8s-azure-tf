@@ -16,6 +16,12 @@ variable "cluster_name" {
   default     = "k8s"
 }
 
+variable "tags" {
+  description = "Tags extras aplicadas a todos os recursos (cost center, ambiente, dono...)"
+  type        = map(string)
+  default     = {}
+}
+
 variable "vm_count" {
   description = "Quantidade de VMs (1 control-plane + N-1 workers)"
   type        = number
